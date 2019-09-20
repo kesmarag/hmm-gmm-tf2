@@ -2,7 +2,7 @@ import os
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
-from kesmarag.hmm import DataSet
+from dataset import DataSet
 # import matplotlib.pyplot as plt
 # from sklearn.cluster import KMeans
 import time
