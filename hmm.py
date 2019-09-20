@@ -4,7 +4,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 from dataset import DataSet
 # import matplotlib.pyplot as plt
-# from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans
 import time
 # disable the tensorflow's warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'

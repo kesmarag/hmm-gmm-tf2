@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='kesmarag-hmm-gmm-tf2',
-      version='0.1.2',
+      version='0.1.3',
       description='HMM class with GMM emission distributions',
       author='Costas Smaragdakis',
       author_email='kesmarag@gmail.com',
@@ -10,4 +10,5 @@ setup(name='kesmarag-hmm-gmm-tf2',
       package_dir={'kesmarag.hmm': './'},
       install_requires=['tensorflow>=2.0.0b1',
                         'tensorflow-probability==0.7.0',
+                        'scikit-learn>=0.18.1',
                         'numpy>=1.12.1'], )
