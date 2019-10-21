@@ -2,7 +2,7 @@ import os
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
-from dataset import DataSet
+from kesmarag.hmm.dataset import DataSet
 # import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
 import time
@@ -449,6 +449,43 @@ class HiddenMarkovModel(object):
     return init_state, obs
     # return init_state.shape
 
+  # def importance_sampling(self, length, num_series=1, p=0.2):
+  #   samples = np.zeros((length, num_series, self._em_mu.shape[-1]))
+  #   states = np.zeros((length, num_series))
+  #   # initial_state = np.zeros((num_series), 'int32')
+  #   n = 0
+  #   prev = -1e10
+  #   while n < num_series:
+  #     cur_state, obs = self._generate_first_step(1,
+  #                                                self._p0,
+  #                                                self._em_w,
+  #                                                self._em_mu,
+  #                                                self._em_var)
+  #     samples[0] = obs.numpy()
+  #     for l in range(length - 1):
+  #       state, obs = self._generate_single_step(1,
+  #                                               cur_state,
+  #                                               self._tp,
+  #                                               self._em_w,
+  #                                               self._em_mu,
+  #                                               self._em_var)
+  #       samples[l + 1, n, :] = obs.numpy()
+  #       cur_state = state.numpy()
+  #       states[l + 1, n] = cur_state
+  #     post = self.log_posterior(np.expand_dims(samples[:, n, :], 0))
+  #     print('n =', n)
+  #     # print(post)
+  #     if post > prev or np.random.rand() < p:
+  #       print('accept :', post)
+  #       n += 1
+  #       prev = post
+  #     else:
+  #       print('reject :', post)
+  #   samples = np.transpose(samples, [1, 0, 2])
+  #   states = np.transpose(states, [1, 0])
+  #   return samples, states
+
+
   def importance_sampling(self, length, num_series=1, p=0.2):
     samples = np.zeros((length, num_series, self._em_mu.shape[-1]))
     states = np.zeros((length, num_series))
@@ -456,6 +493,7 @@ class HiddenMarkovModel(object):
     n = 0
     prev = -1e10
     while n < num_series:
+      best_post_n = -1e11
       cur_state, obs = self._generate_first_step(1,
                                                  self._p0,
                                                  self._em_w,
@@ -473,14 +511,19 @@ class HiddenMarkovModel(object):
         cur_state = state.numpy()
         states[l + 1, n] = cur_state
       post = self.log_posterior(np.expand_dims(samples[:, n, :], 0))
-      print('n =', n)
+      if post > best_post_n:
+        best_post_n = post
+        best_samples_n = obs.numpy()
+      # print('n =', n)
       # print(post)
-      if post > prev or np.random.rand() < p:
-        print('accept :', post)
+      if best_post_n > prev or np.random.rand() < p:
+        print(n , best_post_n)
+        samples[l + 1, n, :] = best_samples_n
         n += 1
-        prev = post
+        prev = best_post_n
       else:
-        print('reject :', post)
+        pass
+        # print('reject :', post)
     samples = np.transpose(samples, [1, 0, 2])
     states = np.transpose(states, [1, 0])
     return samples, states
@@ -515,25 +558,27 @@ class HiddenMarkovModel(object):
 
 if __name__ == '__main__':
   toy_data = toy_example()
-  plt.plot(toy_data[0,0:200,0], toy_data[0,0:200,1], '*')
-  plt.plot(toy_data[0,201:500,0], toy_data[0,201:500,1], '*')
-  plt.plot(toy_data[0,501:700,0], toy_data[0,501:700,1], '*')
+  # plt.plot(toy_data[0,0:200,0], toy_data[0,0:200,1], '*')
+  # plt.plot(toy_data[0,201:500,0], toy_data[0,201:500,1], '*')
+  # plt.plot(toy_data[0,501:700,0], toy_data[0,501:700,1], '*')
   # plt.show()
   # exit(0)
+  # toy_data = np.random.randn(1,100,2)
   model = new_left_to_right_hmm(3, 2, toy_data)
   other = new_left_to_right_hmm(3, 2, toy_data)
-  model.fit(toy_data, max_iter=10, verbose=False, min_var = 0.1)
+  model.fit(toy_data, max_iter=50, verbose=False, min_var = 0.001)
   # other.fit(toy_data, max_iter=2, verbose=True, min_var = 0.1)
   # hidden_states = model.viterbi_algorithm(toy_data)
   # print(hidden_states)
   # print(model._em_var)
-  print(model._em_mu)
-  exit(0)
-  samples1, states1= model.importance_sampling(700, 1000)
-  samples2, states2 = model.importance_sampling(700, 1000)
+  # print(model._em_mu)
+  # exit(0)
+  samples1, states1= model.importance_sampling(700, 10)
+  # exit(0)
+  # samples2, states2 = model.importance_sampling(700, 10)
 
   print(model.kl_divergence(other, samples1))
-  print(model.kl_divergence(other, samples2))
+  # print(model.kl_divergence(other, samples2))
   # tic = time.time()
   # print(np.mean(model.log_posterior(samples)))
   # print(states)
