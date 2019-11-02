@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='kesmarag-hmm-gmm-tf2',
-      version='0.2.0',
+      version='0.2.1',
       description='HMM class with GMM emission distributions',
       author='Costas Smaragdakis',
       author_email='kesmarag@gmail.com',

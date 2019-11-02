@@ -8,11 +8,11 @@ from sklearn.cluster import KMeans
 import time
 # disable the tensorflow's warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+np.set_printoptions(6)
 
 def num_of_parameters(k, m, d):
   return k + k ** 2 + k * m + 2 * k * m * d
 
-# @tf.function
 def dataset_tf(dataset):
   return dataset
 
@@ -40,6 +40,23 @@ def new_left_to_right_hmm(states, mixtures, data):
   model = HiddenMarkovModel(p0, tp, w, mu, var)
   return model
 
+def store_hmm(model, filename):
+  np.savez(filename,
+           p0 = model._p0,
+           tp = model._tp,
+           w = model._em_w,
+           mu = model._em_mu,
+           var = model._em_var)
+
+def restore_hmm(filename):
+  z = np.load(filename)
+  p0 = z['p0']
+  tp = z['tp']
+  w = z['w']
+  mu = z['mu']
+  var = z['var']
+  return HiddenMarkovModel(p0, tp, w, mu, var)
+
 def toy_example():
   N3 = [200, 300, 200]
   s = 0
@@ -63,15 +80,83 @@ def toy_example():
   return np.expand_dims(samples, 0)
 
 class HiddenMarkovModel(object):
+  """ A hidden Markov model class on top of TensorFlow 2.0
+
+      ...
+      
+      Attributes
+      ----------
+      
+      Methods
+      -------
+  """
 
   def __init__(self, p0, tp, em_w, em_mu, em_var):
+    """
+    Parameters
+    ----------
+    p0 : 1D numpy array
+      Text
+    tp : 2D numpy array
+      Text
+    em_w : 2D numpy array
+      Text
+    em_mu : 3D numpy array
+      Text
+    em_var : 3D numpy array
+      Text  
+    """
     self._p0 = p0
     self._tp = tp
     self._em_w = em_w
     self._em_mu = em_mu
     self._em_var = em_var
     self._k = tp.shape[0] # number of hidden states
+  
+  @property
+  def p0(self):
+    return np.squeeze(self._p0)
 
+  @property
+  def tp(self):
+    return self._tp
+
+  @property
+  def w(self):
+    return np.squeeze(self._em_w)
+  
+  @property
+  def mu(self):
+    return self._em_mu
+
+  @property
+  def var(self):
+    return self._em_var
+
+  def __str__(self):
+    s = '### [kesmarag.hmm.HiddenMarkovModel] ###'
+    s += '\n\n=== Prior probabilities ================\n\n'
+    s += str(self.p0)
+    s += '\n\n=== Transition probabilities ===========\n\n'
+    s += str(self.tp)
+    s += '\n\n=== Emission distributions =============\n \n'
+    for i in range(self.w.shape[0]):
+      if i != 0:
+        s += '\n'
+      s += '*** Hidden state #' + str(i+1) + ' *** \n \n'
+      for j in range(self.w.shape[1]):
+        s += '--- Mixture #' + str(j+1) + ' --- \n'
+        s += 'weight : ' + str(self.w[i, j])
+        s += '\n'
+        s += 'mean_values : ' + str(self.mu[i,j,:])
+        s += '\n'
+        s += 'variances : ' + str(self.var[i,j,:])
+        s += '\n'
+        if j != self.w.shape[1] - 1:
+          s += '\n'
+    return s
+  # [[i * j for j in range(m)] for i in range(n)]
+  
   def log_posterior(self, data):
     _, _, posterior = self._forward(data,
                                     self._p0,
@@ -81,36 +166,14 @@ class HiddenMarkovModel(object):
                                     self._em_var)
     return np.squeeze(posterior.numpy())
 
-  # @tf.function
-  # def _run_viterbi(self, data):
-  #  """Implements the viterbi decoding algorithm.
-
-  #   Args:
-  #     data: A numpy array of rank two or three represents the observed data.
-
-  #   Returns:
-  #     A numpy array contains he most probable hidden state paths.
-  #   """
-
-  #   self._viterbi(data)
-  #   # exit(0)
-  # @tf.function
   def viterbi_algorithm(self, data):
     w_tf, am_tf = self._viterbi(data, self._p0, self._tp, self._em_w, self._em_mu, self._em_var)
-    # w, am = self._w, self._am
-    # print(w)
-    # exit(0)
     w = np.array(w_tf)[:, -1, :]
     am = np.array(am_tf)
-    # print('okay')
-    # print('am =', am)
-    # am = self._am
     argmax_w = np.argmax(w, axis=1)
-    # exit(0)
     psi = np.concatenate((am[range(len(w)), 1::, argmax_w], np.expand_dims(argmax_w, 1)), -1)
     dec = []
     for i, p in enumerate(am):
-      # print(i)
       dec_p = [argmax_w[i]]
       c = p[::-1, :]
       l = argmax_w[i]
@@ -119,13 +182,8 @@ class HiddenMarkovModel(object):
         l = c[j][l]
       dec_p.insert(0, l)
       dec.append(dec_p)
-    # print('### DEC ###')
-    # print(dec)
-    # print('### ### ###')
     return np.squeeze(np.array(dec, dtype='int16'))
 
-
-  # @tf.function
   def _forward_step(self, n, alpha, c, data, _tp, em_w, em_mu, em_var):
     alpha_tp = tf.matmul(alpha[n-1], _tp)
     em = tfp.distributions.MixtureSameFamily(
@@ -134,11 +192,9 @@ class HiddenMarkovModel(object):
      components_distribution=tfp.distributions.MultivariateNormalDiag(
          loc=em_mu,
          scale_diag=em_var))
-    # print(alpha_tp)
     ds = tf.expand_dims(dataset_tf(data), -2)
     a_n_tmp = tf.multiply(em.prob(ds[:, n, :]), alpha_tp)
     c_n_tmp = tf.expand_dims(tf.reduce_sum(input_tensor=a_n_tmp, axis=-1), -1)
-    # print(a_n_tmp)
     return [n + 1, tf.concat([alpha, tf.expand_dims(a_n_tmp / c_n_tmp, 0)], 0),
             tf.concat([c, tf.expand_dims(c_n_tmp, 0)], 0),
             data, _tp, em_w, em_mu, em_var]
@@ -146,27 +202,15 @@ class HiddenMarkovModel(object):
   @tf.function
   def _forward(self, data, _p0, _tp, em_w, em_mu, em_var):
     n = tf.shape(input=data)[1]
-    # print(dataset_tf(self._dataset))
-    # alpha shape : (N, I, states)
-    # c shape : (N, I, 1)
-    # print(self._p0.probs)
-    # p0 = tfp.distributions.Categorical(probs=_p0)
-    # tp = tfp.distributions.Categorical(probs=_tp)
     em = tfp.distributions.MixtureSameFamily(
      mixture_distribution=tfp.distributions.Categorical(
          probs=em_w),
      components_distribution=tfp.distributions.MultivariateNormalDiag(
          loc=em_mu,
          scale_diag=em_var))
-    # print(self._dataset)
     ds = tf.expand_dims(dataset_tf(data), -2)
-    # self._ds = ds
-    # print(self._em.prob(dataset_tf(self._dataset)))
-    # exit(0)
     a_0_tmp = tf.expand_dims(
       tf.multiply(em.prob(ds[:, 0, :]), tf.squeeze(_p0)), 0)
-    # exit(0)
-    # print('a_0_tmp =', a_0_tmp)
     c_0 = tf.expand_dims(tf.reduce_sum(input_tensor=a_0_tmp, axis=-1), -1)
     alpha_0 = a_0_tmp / c_0
     i0 = tf.constant(1)
@@ -208,7 +252,6 @@ class HiddenMarkovModel(object):
   @tf.function
   def _backward(self, data, _p0, _tp, em_w, em_mu, em_var):
     ds = tf.expand_dims(dataset_tf(data), -2)
-    # self._ds = ds
     n = tf.shape(input=ds)[1]
     shape = tf.shape(input=ds)[0]
     dims = tf.stack([shape, self._k])
@@ -304,7 +347,6 @@ class HiddenMarkovModel(object):
       shape_invariants=[i0.get_shape(), tf.TensorShape(
         [None, None, self._k, self._k]), _tp.shape])
     xi = xi_tmp[1:, :, :]
-    # print('------ gamma shape', gamma.shape)
     return gamma, xi
 
   def fit(self, data, max_iter=100, min_var=0.01, verbose=False):
@@ -329,15 +371,6 @@ class HiddenMarkovModel(object):
       _, _, posterior = self._forward(data, self._p0, self._tp, self._em_w, self._em_mu,
                                       self._em_var)
       posts.append(np.mean(posterior.numpy()))
-      # if verbose:
-        # print('--- tp ---')
-        # print(self._tp)
-        # print('--- w ---')
-        # print(self._em_w)
-        # print('--- mu ---')
-        # print(self._em_mu)
-        # print('--- var ---')
-        # print(self._em_var)
       if np.abs(posts[-1]-posts[-2])/(np.abs(posts[-2])/data.shape[1]) < 0.01:
         if verbose:
           print('epoch:', str(i+1).rjust(3), ', ln[p(X|λ)] =', posts[-1])
@@ -348,10 +381,8 @@ class HiddenMarkovModel(object):
 
   @tf.function
   def _maximization(self, data, _p0, _tp, em_w, em_mu, em_var, min_var):
-    # max_var = 100.0
     gamma, xi = self._expectation(data, _p0, _tp, em_w, em_mu, em_var)
     gamma_mv = tf.reduce_mean(input_tensor=gamma, axis=1, name='gamma_mv')
-    # self._gamma_mv = gamma_mv
     xi_mv = tf.reduce_mean(input_tensor=xi, axis=1, name='xi_mv')
     # update the initial state probabilities
     p0_new = tf.transpose(a=tf.expand_dims(gamma_mv[0], -1))
@@ -447,43 +478,6 @@ class HiddenMarkovModel(object):
     full_samples = em.sample(num_series)
     obs = tf.gather_nd(full_samples, tf.expand_dims(init_state_with_order, 0))
     return init_state, obs
-    # return init_state.shape
-
-  # def importance_sampling(self, length, num_series=1, p=0.2):
-  #   samples = np.zeros((length, num_series, self._em_mu.shape[-1]))
-  #   states = np.zeros((length, num_series))
-  #   # initial_state = np.zeros((num_series), 'int32')
-  #   n = 0
-  #   prev = -1e10
-  #   while n < num_series:
-  #     cur_state, obs = self._generate_first_step(1,
-  #                                                self._p0,
-  #                                                self._em_w,
-  #                                                self._em_mu,
-  #                                                self._em_var)
-  #     samples[0] = obs.numpy()
-  #     for l in range(length - 1):
-  #       state, obs = self._generate_single_step(1,
-  #                                               cur_state,
-  #                                               self._tp,
-  #                                               self._em_w,
-  #                                               self._em_mu,
-  #                                               self._em_var)
-  #       samples[l + 1, n, :] = obs.numpy()
-  #       cur_state = state.numpy()
-  #       states[l + 1, n] = cur_state
-  #     post = self.log_posterior(np.expand_dims(samples[:, n, :], 0))
-  #     print('n =', n)
-  #     # print(post)
-  #     if post > prev or np.random.rand() < p:
-  #       print('accept :', post)
-  #       n += 1
-  #       prev = post
-  #     else:
-  #       print('reject :', post)
-  #   samples = np.transpose(samples, [1, 0, 2])
-  #   states = np.transpose(states, [1, 0])
-  #   return samples, states
 
 
   def importance_sampling(self, length, num_series=1, p=0.2):
@@ -514,8 +508,6 @@ class HiddenMarkovModel(object):
       if post > best_post_n:
         best_post_n = post
         best_samples_n = obs.numpy()
-      # print('n =', n)
-      # print(post)
       if best_post_n > prev or np.random.rand() < p:
         print(n , best_post_n)
         samples[l + 1, n, :] = best_samples_n
@@ -523,7 +515,6 @@ class HiddenMarkovModel(object):
         prev = best_post_n
       else:
         pass
-        # print('reject :', post)
     samples = np.transpose(samples, [1, 0, 2])
     states = np.transpose(states, [1, 0])
     return samples, states
@@ -531,7 +522,6 @@ class HiddenMarkovModel(object):
   def generate(self, length, num_series=1):
     samples = np.zeros((length, num_series, self._em_mu.shape[-1]))
     states = np.zeros((length, num_series))
-    # initial_state = np.zeros((num_series), 'int32')
     cur_state, obs = self._generate_first_step(num_series,
                                                 self._p0,
                                                 self._em_w,
@@ -558,29 +548,14 @@ class HiddenMarkovModel(object):
 
 if __name__ == '__main__':
   toy_data = toy_example()
-  # plt.plot(toy_data[0,0:200,0], toy_data[0,0:200,1], '*')
-  # plt.plot(toy_data[0,201:500,0], toy_data[0,201:500,1], '*')
-  # plt.plot(toy_data[0,501:700,0], toy_data[0,501:700,1], '*')
-  # plt.show()
-  # exit(0)
-  # toy_data = np.random.randn(1,100,2)
+
   model = new_left_to_right_hmm(3, 2, toy_data)
   other = new_left_to_right_hmm(3, 2, toy_data)
-  model.fit(toy_data, max_iter=50, verbose=False, min_var = 0.001)
-  # other.fit(toy_data, max_iter=2, verbose=True, min_var = 0.1)
-  # hidden_states = model.viterbi_algorithm(toy_data)
-  # print(hidden_states)
-  # print(model._em_var)
-  # print(model._em_mu)
-  # exit(0)
-  samples1, states1= model.importance_sampling(700, 10)
-  # exit(0)
-  # samples2, states2 = model.importance_sampling(700, 10)
 
+  model.fit(toy_data, max_iter=50, verbose=True, min_var = 0.001)
+
+  samples1, states1= model.importance_sampling(700, 10)
+  
   print(model.kl_divergence(other, samples1))
-  # print(model.kl_divergence(other, samples2))
-  # tic = time.time()
-  # print(np.mean(model.log_posterior(samples)))
-  # print(states)
-  # toc = time.time()
-  # print(toc-tic)
+
+
