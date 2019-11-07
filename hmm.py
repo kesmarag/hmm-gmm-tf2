@@ -10,9 +10,6 @@ import time
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 np.set_printoptions(6)
 
-def num_of_parameters(k, m, d):
-  return k + k ** 2 + k * m + 2 * k * m * d
-
 def dataset_tf(dataset):
   return dataset
 
@@ -83,10 +80,10 @@ class HiddenMarkovModel(object):
   """ A hidden Markov model class on top of TensorFlow 2.0
 
       ...
-      
+
       Attributes
       ----------
-      
+
       Methods
       -------
   """
@@ -104,7 +101,7 @@ class HiddenMarkovModel(object):
     em_mu : 3D numpy array
       Text
     em_var : 3D numpy array
-      Text  
+      Text
     """
     self._p0 = p0
     self._tp = tp
@@ -112,7 +109,7 @@ class HiddenMarkovModel(object):
     self._em_mu = em_mu
     self._em_var = em_var
     self._k = tp.shape[0] # number of hidden states
-  
+
   @property
   def p0(self):
     return np.squeeze(self._p0)
@@ -124,7 +121,7 @@ class HiddenMarkovModel(object):
   @property
   def w(self):
     return np.squeeze(self._em_w)
-  
+
   @property
   def mu(self):
     return self._em_mu
@@ -155,8 +152,7 @@ class HiddenMarkovModel(object):
         if j != self.w.shape[1] - 1:
           s += '\n'
     return s
-  # [[i * j for j in range(m)] for i in range(n)]
-  
+
   def log_posterior(self, data):
     _, _, posterior = self._forward(data,
                                     self._p0,
