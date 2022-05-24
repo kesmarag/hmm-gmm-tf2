@@ -8,7 +8,7 @@ setup(name='kesmarag-hmm-gmm-tf2',
       url='https://github.com/kesmarag/hmm-gmm-tf2',
       packages=['kesmarag.hmm'],
       package_dir={'kesmarag.hmm': './'},
-      install_requires=['tensorflow==2.0.0',
+      install_requires=['tensorflow==2.6.4',
                         'tensorflow-probability==0.8.0',
                         'scikit-learn>=0.18.1',
                         'numpy>=1.12.1'], )
