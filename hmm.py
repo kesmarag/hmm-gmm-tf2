@@ -14,6 +14,8 @@ def dataset_tf(dataset):
   return dataset
 
 def new_left_to_right_hmm(states, mixtures, data):
+  '''### Function for creating a new Left-to-Right HMM
+  '''
   N = data.shape[1]
   Ns = N // states
   D = data.shape[-1]
@@ -38,6 +40,8 @@ def new_left_to_right_hmm(states, mixtures, data):
   return model
 
 def store_hmm(model, filename):
+  '''Saves a HMM to the disk.
+  '''
   np.savez(filename,
            p0 = model._p0,
            tp = model._tp,
@@ -46,6 +50,8 @@ def store_hmm(model, filename):
            var = model._em_var)
 
 def restore_hmm(filename):
+  '''Loads a saved HMM from a filename.
+  '''
   z = np.load(filename)
   p0 = z['p0']
   tp = z['tp']
@@ -55,6 +61,8 @@ def restore_hmm(filename):
   return HiddenMarkovModel(p0, tp, w, mu, var)
 
 def toy_example():
+  '''A dataset example
+  '''
   N3 = [200, 300, 200]
   s = 0
   mn = np.array([[[0.5, 1.], [2., 1.]],
@@ -77,31 +85,47 @@ def toy_example():
   return np.expand_dims(samples, 0)
 
 class HiddenMarkovModel(object):
-  """ A hidden Markov model class on top of TensorFlow 2.0
-
-      ...
-
-      Attributes
-      ----------
-
-      Methods
-      -------
+  """**HiddenMarkovModel implements hidden Markov models with Gaussian mixtures as**
+     **distributions on top of TensorFlow 2.0**
   """
-
   def __init__(self, p0, tp, em_w, em_mu, em_var):
     """
-    Parameters
-    ----------
-    p0 : 1D numpy array
-      Text
-    tp : 2D numpy array
-      Text
-    em_w : 2D numpy array
-      Text
-    em_mu : 3D numpy array
-      Text
-    em_var : 3D numpy array
-      Text
+    Args:
+      p0: 1D numpy array
+        Determines the probability of the first hidden variable
+        in the Markov chain for each hidden state.
+        e.g. np.array([0.5, 0.25, 0.25]) (3 hidden states)
+      tp: 2D numpy array
+        Determines the transition probabilities for moving from one hidden state to each
+        other. The (i,j) element of the matrix denotes the probability of
+        transiting from i-th state to the j-th state.
+        e.g. np.array([[0.80, 0.15, 0.05],
+                       [0.20, 0.55, 0.25],
+                       [0.15, 0.15, 0.70]])
+        (3 hidden states)
+      em_w: 2D numpy array
+        Contains the weights of the Gaussian mixtures.
+        Each line correspond to a hidden state.
+        e.g. np.array([[0.8, 0.2],
+                       [0.5, 0.5],
+                       [0.1, 0.9]])
+        (3 hidden states, 2 Gaussian mixtures)
+      em_mu: 3D numpy array
+        Determines the mean value vector for each component
+        of the emission distributions.
+        The first dimension refers to the hidden states whereas the
+        second one refer to the mixtures.
+        e.g. np.array([[[2.2, 1.3], [1.2, 0.2]],    1st hidden state
+                       [[1.3, 5.0], [4.3, -2.3]],   2nd hidden state
+                       [[0.0, 1.2], [0.4, -2.0]]])  3rd hidden state
+        (3 hidden states, 2 Gaussian mixtures)
+      em_var: 3D numpy array
+        Determines the variance vector for each component of the
+        emission distributions.
+        e.g. np.array([[[2.2, 1.3], [1.2, 0.2]],    1st hidden state
+                       [[1.3, 5.0], [4.3, -2.3]],   2nd hidden state
+                       [[0.0, 1.2], [0.4, -2.0]]])  3rd hidden state
+        (3 hidden states, 2 Gaussian mixtures)
     """
     self._p0 = p0
     self._tp = tp
@@ -154,6 +178,17 @@ class HiddenMarkovModel(object):
     return s
 
   def log_posterior(self, data):
+    ''' Log probability density function.
+
+        Args:
+          data: 3D numpy array
+            The first dimension refers to each component of the batch.
+            The second dimension refers to each specific time interval.
+            The third dimension refers to the values of the observed data.
+
+        Returns:
+          1D numpy array with the values of the log-probability function with respect to the observations.
+    '''
     _, _, posterior = self._forward(data,
                                     self._p0,
                                     self._tp,
@@ -163,6 +198,21 @@ class HiddenMarkovModel(object):
     return np.squeeze(posterior.numpy())
 
   def viterbi_algorithm(self, data):
+    ''' Performs the viterbi algorithm for calculating the most probable
+        hidden state path of some batch data.
+
+        Args:
+          data: 3D numpy array
+            The first dimension refers to each component of the batch.
+            The second dimension refers to each specific time interval.
+            The third dimension refers to the values of the observed data.
+
+        Returns:
+          2D numpy array with the most probable hidden state paths.
+            The first dimension refers to each component of the batch.
+            The second dimension the order of the hidden states.
+            (0, 1, ..., K-1), where K is the total number of hidden states.
+    '''
     w_tf, am_tf = self._viterbi(data, self._p0, self._tp, self._em_w, self._em_mu, self._em_var)
     w = np.array(w_tf)[:, -1, :]
     am = np.array(am_tf)
@@ -346,6 +396,23 @@ class HiddenMarkovModel(object):
     return gamma, xi
 
   def fit(self, data, max_iter=100, min_var=0.01, verbose=False):
+    ''' This method re-adapts the model parameters with respect to a batch of
+        observations, using the Expectation-Maximization (E-M) algorithm.
+
+        Args:
+          data: 3D numpy array
+            The first dimension refers to each component of the batch.
+            The second dimension refers to each specific time step.
+            The third dimension refers to the values of the observed data.
+          max_iter: positive integer number
+            The maximum number of iterations.
+          min_var: non-negative real value
+            The minimum acceptance variance. We use this restriction
+            in order to prevent overfitting of the model.
+
+        Returns:
+          1D numpy array with the log-posterior probability densities for each training iteration.
+    '''
     posts = []
     _, _, posterior = self._forward(data,self._p0, self._tp, self._em_w, self._em_mu,
                                       self._em_var)
@@ -476,7 +543,32 @@ class HiddenMarkovModel(object):
     return init_state, obs
 
 
-  def importance_sampling(self, length, num_series=1, p=0.2):
+  def generate(self, length, num_series=1, p=0.2):
+    '''Generates a batch of time series.
+
+    Args:
+      length: positive integer
+        The length of each time series.
+      num_series: positive integer (default 1)
+        The number of the time series.
+      p: real value between 0.0 and 1.0 (default 0.2)
+        The importance sampling parameter.
+        At each iteration:
+      k[A] Draw X and calculate p(X)
+          if p(X) > p(X_{q-1}) then
+            accept X as X_q
+          else
+            draw r from [0,1] using the uniform distribution.
+            if r > p then
+              accept the best of the rejected ones.
+            else
+              go to [A]
+
+    Returns:
+      3D numpy array with the drawn time series.
+      2D numpy array with the corresponding hidden states.
+
+    '''
     samples = np.zeros((length, num_series, self._em_mu.shape[-1]))
     states = np.zeros((length, num_series))
     # initial_state = np.zeros((num_series), 'int32')
@@ -515,30 +607,10 @@ class HiddenMarkovModel(object):
     states = np.transpose(states, [1, 0])
     return samples, states
 
-  def generate(self, length, num_series=1):
-    samples = np.zeros((length, num_series, self._em_mu.shape[-1]))
-    states = np.zeros((length, num_series))
-    cur_state, obs = self._generate_first_step(num_series,
-                                                self._p0,
-                                                self._em_w,
-                                                self._em_mu,
-                                                self._em_var)
-    samples[0] = obs.numpy()
-    for l in range(length - 1):
-      state, obs = self._generate_single_step(num_series,
-                                              cur_state,
-                                              self._tp,
-                                              self._em_w,
-                                              self._em_mu,
-                                              self._em_var)
-      samples[l + 1] = obs.numpy()
-      cur_state = state.numpy()
-      states[l + 1] = cur_state
-    samples = np.transpose(samples, [1, 0, 2])
-    states = np.transpose(states, [1, 0])
-    return samples, states
-
   def kl_divergence(self, other, data):
+    ''' Estimates the value of the Kullback-Leibler divergence (KLD)
+        between the model and another model with respect to some data.
+    '''
     return np.mean(self.log_posterior(data) - other.log_posterior(data)) / data.shape[1]
 
 
@@ -550,8 +622,8 @@ if __name__ == '__main__':
 
   model.fit(toy_data, max_iter=50, verbose=True, min_var = 0.001)
 
-  samples1, states1= model.importance_sampling(700, 10)
-  
+  samples1, states1= model.generate(700, 1)
   print(model.kl_divergence(other, samples1))
-
-
+  import matplotlib.pyplot as plt
+  plt.plot(samples1[0])
+  plt.savefig('test.jpg')
